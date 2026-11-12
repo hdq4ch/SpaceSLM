@@ -1,0 +1,96 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Training Configuration – SpaceSLM-mini
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Model ──────────────────────────────────────────────────────────────────────
+model:
+  base_model_id: "Qwen/Qwen2.5-0.5B-Instruct"
+  tokenizer_id: "Qwen/Qwen2.5-0.5B-Instruct"
+  max_seq_length: 512
+  trust_remote_code: true
+
+# ── Quantization (BitsAndBytes) ────────────────────────────────────────────────
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"            # nf4 | fp4
+  bnb_4bit_compute_dtype: "float16"     # float16 | bfloat16
+  bnb_4bit_use_double_quant: true       # nested quantization
+
+# ── LoRA Adapter ───────────────────────────────────────────────────────────────
+lora:
+  r: 8                                  # rank
+  lora_alpha: 16                        # scaling factor
+  lora_dropout: 0.05
+  bias: "none"
+  task_type: "CAUSAL_LM"
+  target_modules:                       # Qwen2 attention projections
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+# ── Training Arguments ─────────────────────────────────────────────────────────
+training:
+  output_dir: "models/adapter"
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4       # effective batch = 16
+  gradient_checkpointing: true
+  optim: "paged_adamw_8bit"
+  learning_rate: 2.0e-4
+  weight_decay: 0.001
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  max_steps: -1                        # -1 = run full epochs
+  logging_steps: 25
+  save_strategy: "epoch"
+  eval_strategy: "epoch"
+  save_total_limit: 2
+  load_best_model_at_end: true
+  fp16: true
+  bf16: false
+  report_to: "none"                    # "wandb" | "tensorboard" | "none"
+  seed: 42
+
+# ── Dataset ────────────────────────────────────────────────────────────────────
+dataset:
+  train_file: "data/processed/train.jsonl"
+  val_file: "data/processed/val.jsonl"
+  eval_file: "data/evaluation/eval.jsonl"
+  train_split: 0.85
+  val_split: 0.10
+  eval_split: 0.05
+  shuffle_seed: 42
+
+# ── Data Collection (arXiv) ────────────────────────────────────────────────────
+arxiv:
+  categories:
+    - "astro-ph.IM"       # Instrumentation and Methods for Astrophysics
+    - "astro-ph.EP"       # Earth and Planetary Astrophysics
+    - "physics.space-ph"  # Space Physics
+    - "eess.SP"           # Signal Processing (satellite comms)
+  max_results_per_category: 500
+  date_from: "2018-01-01"
+  date_to: "2024-12-31"
+  output_file: "data/raw/arxiv_papers.jsonl"
+
+# ── QA Generation ──────────────────────────────────────────────────────────────
+qa_generation:
+  model: "gpt-3.5-turbo"              # LLM used to generate QA pairs
+  questions_per_abstract: 3
+  min_answer_length: 20
+  max_answer_length: 300
+  temperature: 0.7
+
+# ── Inference ──────────────────────────────────────────────────────────────────
+inference:
+  gguf_model_path: "models/gguf/space-slm-q4_k_m.gguf"
+  max_new_tokens: 256
+  temperature: 0.7
+  top_p: 0.9
+  repeat_penalty: 1.1
+  n_ctx: 512
